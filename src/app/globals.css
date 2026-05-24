@@ -281,6 +281,13 @@ textarea:focus {
   font-weight: 900;
 }
 
+.brand img {
+  border-radius: 6px;
+  height: 32px;
+  object-fit: cover;
+  width: 32px;
+}
+
 .nav-user {
   color: var(--muted);
   font-size: 0.92rem;

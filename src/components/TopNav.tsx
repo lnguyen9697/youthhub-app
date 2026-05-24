@@ -1,6 +1,6 @@
 "use client";
 
-import { LogOut, UsersRound } from "lucide-react";
+import { LogOut } from "lucide-react";
 import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 
@@ -10,7 +10,7 @@ export function TopNav() {
   return (
     <header className="top-nav">
       <Link className="brand" href={appUser ? `/dashboard/${appUser.role}` : "/"}>
-        <UsersRound aria-hidden="true" size={24} />
+        <img alt="" aria-hidden="true" src="/youthhub-logo.png" />
         <span>YouthHub</span>
       </Link>
 
