@@ -1,0 +1,9 @@
+{
+  "name": "YouthHub",
+  "short_name": "YouthHub",
+  "description": "Youth organization attendance, points, and parent updates",
+  "start_url": "/login",
+  "display": "standalone",
+  "background_color": "#f6f8fb",
+  "theme_color": "#176b87"
+}
