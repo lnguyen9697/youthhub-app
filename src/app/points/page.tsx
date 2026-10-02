@@ -1,31 +1,40 @@
 "use client";
 
-import { Plus, RefreshCw, Trophy } from "lucide-react";
+import { Plus, RefreshCw, Trash2, Trophy } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { AuthGuard } from "@/components/AuthGuard";
 import { TopNav } from "@/components/TopNav";
 import { useAuth } from "@/context/AuthContext";
 import { listAttendanceForScope } from "@/lib/attendance";
+import { attendanceItemOptions, getAttendancePoints } from "@/lib/attendanceScore";
 import { sortNganh } from "@/lib/nganh";
-import { addCompetitionPoint, listCompetitionPoints } from "@/lib/points";
+import { addCompetitionPoint, deleteAllCompetitionPoints, listCompetitionPoints } from "@/lib/points";
 import { listStudentsForUser } from "@/lib/students";
-import type { AttendanceStatus } from "@/types/attendance";
+import type { AttendanceItem } from "@/types/attendance";
 import type { CompetitionPointRecord } from "@/types/points";
 import type { Student } from "@/types/student";
 
-const attendancePointValues: Record<AttendanceStatus, number> = {
-  present: 3,
-  late: 2,
-  excused: 1,
-  absent: 0
-};
+type AttendanceItemTotals = Record<AttendanceItem, number>;
 
 type RankingRow = {
   student: Student;
   attendancePoints: number;
+  attendanceItemTotals: AttendanceItemTotals;
   manualPoints: number;
   totalPoints: number;
 };
+
+type SortKey = "totalPoints" | "attendancePoints" | "manualPoints" | AttendanceItem;
+
+function emptyAttendanceItemTotals(): AttendanceItemTotals {
+  return {
+    present: 0,
+    churchEntry: 0,
+    mass: 0,
+    uniform: 0,
+    veymEvent: 0
+  };
+}
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -36,16 +45,19 @@ export default function PointsPage() {
   const [students, setStudents] = useState<Student[]>([]);
   const [manualRecords, setManualRecords] = useState<CompetitionPointRecord[]>([]);
   const [attendanceTotals, setAttendanceTotals] = useState<Record<string, number>>({});
+  const [attendanceItemTotals, setAttendanceItemTotals] = useState<Record<string, AttendanceItemTotals>>({});
   const [selectedStudentId, setSelectedStudentId] = useState("");
   const [date, setDate] = useState(today());
   const [points, setPoints] = useState("1");
   const [reason, setReason] = useState("");
   const [selectedGroup, setSelectedGroup] = useState("");
   const [selectedTeam, setSelectedTeam] = useState("");
+  const [sortKey, setSortKey] = useState<SortKey>("totalPoints");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const isAdmin = appUser?.role === "admin";
 
   const groups = useMemo(
     () => sortNganh(Array.from(new Set(students.map((student) => student.group).filter(Boolean)))),
@@ -80,16 +92,27 @@ export default function PointsPage() {
           .filter((record) => record.studentId === student.studentId)
           .reduce((total, record) => total + record.points, 0);
         const attendancePoints = attendanceTotals[student.studentId] ?? 0;
+        const itemTotals = attendanceItemTotals[student.studentId] ?? emptyAttendanceItemTotals();
 
         return {
           student,
           attendancePoints,
+          attendanceItemTotals: itemTotals,
           manualPoints,
           totalPoints: attendancePoints + manualPoints
         };
       })
-      .sort((a, b) => b.totalPoints - a.totalPoints || a.student.fullName.localeCompare(b.student.fullName));
-  }, [attendanceTotals, filteredStudents, manualRecords]);
+      .sort((a, b) => {
+        const aValue = sortKey in a.attendanceItemTotals
+          ? a.attendanceItemTotals[sortKey as AttendanceItem]
+          : a[sortKey as "totalPoints" | "attendancePoints" | "manualPoints"];
+        const bValue = sortKey in b.attendanceItemTotals
+          ? b.attendanceItemTotals[sortKey as AttendanceItem]
+          : b[sortKey as "totalPoints" | "attendancePoints" | "manualPoints"];
+
+        return bValue - aValue || a.student.fullName.localeCompare(b.student.fullName);
+      });
+  }, [attendanceItemTotals, attendanceTotals, filteredStudents, manualRecords, sortKey]);
 
   const teamRankings = useMemo(() => {
     const totals = new Map<string, number>();
@@ -127,15 +150,25 @@ export default function PointsPage() {
         listCompetitionPoints(leaderGroup, leaderTeam)
       ]);
       const nextAttendanceTotals: Record<string, number> = {};
+      const nextAttendanceItemTotals: Record<string, AttendanceItemTotals> = {};
 
       attendanceRecords.forEach((record) => {
         nextAttendanceTotals[record.studentId] =
-          (nextAttendanceTotals[record.studentId] ?? 0) + attendancePointValues[record.status];
+          (nextAttendanceTotals[record.studentId] ?? 0) + getAttendancePoints(record);
+
+        if (!nextAttendanceItemTotals[record.studentId]) {
+          nextAttendanceItemTotals[record.studentId] = emptyAttendanceItemTotals();
+        }
+
+        record.attendanceItems.forEach((item) => {
+          nextAttendanceItemTotals[record.studentId][item] += 1;
+        });
       });
 
       setStudents(nextStudents);
       setManualRecords(nextManualRecords);
       setAttendanceTotals(nextAttendanceTotals);
+      setAttendanceItemTotals(nextAttendanceItemTotals);
       setSelectedStudentId((current) => current || nextStudents[0]?.studentId || "");
     } catch (caughtError) {
       setError(caughtError instanceof Error ? caughtError.message : "Could not load points.");
@@ -202,6 +235,44 @@ export default function PointsPage() {
     }
   }
 
+  async function handleClearManualPoints() {
+    if (!isAdmin) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Delete all manual point records? Attendance points will stay. This cannot be undone."
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setMessage("");
+
+    try {
+      await deleteAllCompetitionPoints();
+      setManualRecords([]);
+      setMessage("Manual point records cleared.");
+      await loadPointData();
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Could not clear manual points.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function SortButton({ label, value }: { label: string; value: SortKey }) {
+    return (
+      <button className="table-sort-button" onClick={() => setSortKey(value)} type="button">
+        {label}
+        {sortKey === value ? " ↓" : ""}
+      </button>
+    );
+  }
+
   return (
     <AuthGuard allowedRoles={["admin", "leader"]}>
       <TopNav />
@@ -211,8 +282,8 @@ export default function PointsPage() {
             <p className="eyebrow">Competition points</p>
             <h1>Rankings and awards</h1>
             <p className="muted">
-              Attendance automatically counts toward totals. Add manual points for competitions,
-              service, behavior, or corrections.
+              Attendance checklist items automatically count toward totals. Add manual points for
+              competitions, service, behavior, or corrections.
             </p>
           </div>
 
@@ -224,25 +295,6 @@ export default function PointsPage() {
 
         {error ? <p className="error-message">{error}</p> : null}
         {message ? <p className="success-message">{message}</p> : null}
-
-        <section className="score-rule-grid">
-          <article>
-            <strong>Present</strong>
-            <span>3 points</span>
-          </article>
-          <article>
-            <strong>Late</strong>
-            <span>2 points</span>
-          </article>
-          <article>
-            <strong>Excused</strong>
-            <span>1 point</span>
-          </article>
-          <article>
-            <strong>Absent</strong>
-            <span>0 points</span>
-          </article>
-        </section>
 
         <section className="management-panel">
           <div className="filter-grid">
@@ -369,9 +421,17 @@ export default function PointsPage() {
                   <tr>
                     <th>Rank</th>
                     <th>Member</th>
-                    <th>Attendance</th>
-                    <th>Manual</th>
-                    <th>Total</th>
+                    {attendanceItemOptions.map((option) => (
+                      <th key={option.value}>
+                        <SortButton label={option.label} value={option.value} />
+                      </th>
+                    ))}
+                    <th>
+                      <SortButton label="Manual" value="manualPoints" />
+                    </th>
+                    <th>
+                      <SortButton label="Total" value="totalPoints" />
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -386,7 +446,9 @@ export default function PointsPage() {
                           {row.student.group} / {row.student.team}
                         </span>
                       </td>
-                      <td>{row.attendancePoints}</td>
+                      {attendanceItemOptions.map((option) => (
+                        <td key={option.value}>{row.attendanceItemTotals[option.value]}</td>
+                      ))}
                       <td>{row.manualPoints}</td>
                       <td>
                         <strong>{row.totalPoints}</strong>
@@ -419,7 +481,20 @@ export default function PointsPage() {
           <div className="management-panel no-margin span-dashboard-2">
             <div className="section-heading">
               <h2>Recent manual point history</h2>
-              <p>{recentManualRecords.length} record(s)</p>
+              <div className="section-actions">
+                <p>{recentManualRecords.length} record(s)</p>
+                {isAdmin && manualRecords.length > 0 ? (
+                  <button
+                    className="secondary-button danger"
+                    disabled={saving}
+                    onClick={handleClearManualPoints}
+                    type="button"
+                  >
+                    <Trash2 size={18} />
+                    Clear manual points
+                  </button>
+                ) : null}
+              </div>
             </div>
             {recentManualRecords.length === 0 ? (
               <div className="empty-state">

@@ -7,19 +7,13 @@ import { TopNav } from "@/components/TopNav";
 import { useAuth } from "@/context/AuthContext";
 import { announcementMatchesGroupOrTeam, listAnnouncements } from "@/lib/announcements";
 import { listAttendanceForStudent } from "@/lib/attendance";
+import { formatAttendanceItems, getAttendancePoints } from "@/lib/attendanceScore";
 import { listCompetitionPointsForStudent } from "@/lib/points";
 import { listStudentsForParent } from "@/lib/students";
 import type { Announcement } from "@/types/announcement";
-import type { AttendanceRecord, AttendanceStatus } from "@/types/attendance";
+import type { AttendanceRecord } from "@/types/attendance";
 import type { CompetitionPointRecord } from "@/types/points";
 import type { Student } from "@/types/student";
-
-const attendancePointValues: Record<AttendanceStatus, number> = {
-  present: 3,
-  late: 2,
-  excused: 1,
-  absent: 0
-};
 
 type ChildSummary = {
   student: Student;
@@ -46,7 +40,7 @@ export default function ParentPortalPage() {
     }
 
     return selectedChild.attendance.reduce(
-      (total, record) => total + attendancePointValues[record.status],
+      (total, record) => total + getAttendancePoints(record),
       0
     );
   }, [selectedChild]);
@@ -69,7 +63,7 @@ export default function ParentPortalPage() {
     const ranked = children
       .map((child) => {
         const childAttendancePoints = child.attendance.reduce(
-          (total, record) => total + attendancePointValues[record.status],
+          (total, record) => total + getAttendancePoints(record),
           0
         );
         const childManualPoints = child.manualPoints.reduce(
@@ -208,8 +202,14 @@ export default function ParentPortalPage() {
               </article>
               <article>
                 <span>Latest attendance</span>
-                <strong className="capitalize">{latestAttendance?.status ?? "None yet"}</strong>
-                <p>{latestAttendance?.date ?? "No record"}</p>
+                <strong>{latestAttendance ? `${getAttendancePoints(latestAttendance)} pts` : "None yet"}</strong>
+                <p>
+                  {latestAttendance
+                    ? `${formatAttendanceItems(latestAttendance.attendanceItems)} on ${
+                        latestAttendance.date
+                      }`
+                    : "No record"}
+                </p>
               </article>
               <article>
                 <span>Total points</span>
@@ -242,7 +242,7 @@ export default function ParentPortalPage() {
                     <thead>
                       <tr>
                         <th>Date</th>
-                        <th>Status</th>
+                        <th>Items</th>
                         <th>Points</th>
                         <th>Note</th>
                       </tr>
@@ -251,10 +251,8 @@ export default function ParentPortalPage() {
                       {selectedChild.attendance.slice(0, 12).map((record) => (
                         <tr key={record.attendanceId}>
                           <td>{record.date}</td>
-                          <td>
-                            <span className={`status-pill ${record.status}`}>{record.status}</span>
-                          </td>
-                          <td>{attendancePointValues[record.status]}</td>
+                          <td>{formatAttendanceItems(record.attendanceItems)}</td>
+                          <td>{getAttendancePoints(record)}</td>
                           <td>{record.note || "None"}</td>
                         </tr>
                       ))}

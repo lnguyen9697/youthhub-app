@@ -1,4 +1,12 @@
-import { addDoc, collection, getDocs, query, serverTimestamp, where } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  deleteDoc,
+  getDocs,
+  query,
+  serverTimestamp,
+  where
+} from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import type { CompetitionPointRecord } from "@/types/points";
 import type { Student } from "@/types/student";
@@ -76,4 +84,11 @@ export async function listCompetitionPointsForStudent(studentId: string) {
   return snapshot.docs
     .map((pointDoc) => pointFromDoc(pointDoc.id, pointDoc.data()))
     .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+export async function deleteAllCompetitionPoints() {
+  const firestore = requireDb();
+  const snapshot = await getDocs(collection(firestore, "competitionPoints"));
+
+  await Promise.all(snapshot.docs.map((pointDoc) => deleteDoc(pointDoc.ref)));
 }

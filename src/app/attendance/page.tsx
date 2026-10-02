@@ -11,29 +11,28 @@ import {
   deleteAllAttendanceRecords,
   saveAttendance
 } from "@/lib/attendance";
+import {
+  attendanceItemLabels,
+  attendanceItemOptions,
+  formatAttendanceItems,
+  getAttendancePoints
+} from "@/lib/attendanceScore";
 import { sortNganh } from "@/lib/nganh";
 import { listStudentsForUser } from "@/lib/students";
-import type { AttendanceRecord, AttendanceStatus } from "@/types/attendance";
+import type { AttendanceItem, AttendanceRecord } from "@/types/attendance";
 import type { Student } from "@/types/student";
 
 type AttendanceEntry = {
-  status: AttendanceStatus;
+  attendanceItems: AttendanceItem[];
   note: string;
 };
-
-const statusOptions: Array<{ label: string; value: AttendanceStatus }> = [
-  { label: "Present", value: "present" },
-  { label: "Absent", value: "absent" },
-  { label: "Excused", value: "excused" },
-  { label: "Late", value: "late" }
-];
 
 function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
 function emptyEntry(): AttendanceEntry {
-  return { status: "present", note: "" };
+  return { attendanceItems: [], note: "" };
 }
 
 export default function AttendancePage() {
@@ -67,6 +66,36 @@ export default function AttendancePage() {
         .sort((a, b) => a.fullName.localeCompare(b.fullName)),
     [selectedGroup, selectedTeam, students]
   );
+
+  const attendanceSummary = useMemo(() => {
+    const summary: Record<AttendanceItem, number> = {
+      present: 0,
+      churchEntry: 0,
+      mass: 0,
+      uniform: 0,
+      veymEvent: 0
+    };
+
+    filteredStudents.forEach((student) => {
+      const items = entries[student.studentId]?.attendanceItems ?? [];
+
+      items.forEach((item) => {
+        summary[item] += 1;
+      });
+    });
+
+    return summary;
+  }, [entries, filteredStudents]);
+
+  const attendanceTotalPoints = useMemo(
+    () =>
+      filteredStudents.reduce(
+        (total, student) => total + (entries[student.studentId]?.attendanceItems.length ?? 0),
+        0
+      ),
+    [entries, filteredStudents]
+  );
+
   const isAdmin = appUser?.role === "admin";
 
   async function loadPageData() {
@@ -92,7 +121,7 @@ export default function AttendancePage() {
           (record) => record.studentId === student.studentId
         );
         nextEntries[student.studentId] = savedRecord
-          ? { status: savedRecord.status, note: savedRecord.note }
+          ? { attendanceItems: savedRecord.attendanceItems, note: savedRecord.note }
           : emptyEntry();
       });
 
@@ -122,6 +151,47 @@ export default function AttendancePage() {
     }));
   }
 
+  function toggleAttendanceItem(studentId: string, item: AttendanceItem) {
+    const currentItems = entries[studentId]?.attendanceItems ?? [];
+    const nextItems = currentItems.includes(item)
+      ? currentItems.filter((currentItem) => currentItem !== item)
+      : [...currentItems, item];
+
+    updateEntry(studentId, { attendanceItems: nextItems });
+  }
+
+  function markAllFiltered(item: AttendanceItem) {
+    setEntries((current) => {
+      const nextEntries = { ...current };
+
+      filteredStudents.forEach((student) => {
+        const currentItems = nextEntries[student.studentId]?.attendanceItems ?? [];
+
+        nextEntries[student.studentId] = {
+          ...(nextEntries[student.studentId] ?? emptyEntry()),
+          attendanceItems: currentItems.includes(item) ? currentItems : [...currentItems, item]
+        };
+      });
+
+      return nextEntries;
+    });
+  }
+
+  function clearAllFiltered() {
+    setEntries((current) => {
+      const nextEntries = { ...current };
+
+      filteredStudents.forEach((student) => {
+        nextEntries[student.studentId] = {
+          ...(nextEntries[student.studentId] ?? emptyEntry()),
+          attendanceItems: []
+        };
+      });
+
+      return nextEntries;
+    });
+  }
+
   async function handleSave() {
     if (!appUser) {
       return;
@@ -137,7 +207,7 @@ export default function AttendancePage() {
         recordedBy: appUser.uid,
         entries: filteredStudents.map((student) => ({
           student,
-          status: entries[student.studentId]?.status ?? "present",
+          attendanceItems: entries[student.studentId]?.attendanceItems ?? [],
           note: entries[student.studentId]?.note ?? ""
         }))
       });
@@ -192,7 +262,8 @@ export default function AttendancePage() {
             <p className="eyebrow">Attendance tracking</p>
             <h1>Meeting attendance</h1>
             <p className="muted">
-              Select a date and group, then mark each member as present, absent, excused, or late.
+              Select a date and group, then check each item the member completed. Each item is worth
+              1 point.
             </p>
           </div>
 
@@ -239,6 +310,47 @@ export default function AttendancePage() {
               </select>
             </label>
           </div>
+
+          <div className="attendance-tools">
+            <div>
+              <strong>Quick mark</strong>
+              <span>Applies to the members currently shown by the filters.</span>
+            </div>
+            <div className="attendance-tool-actions">
+              {attendanceItemOptions.map((option) => (
+                <button
+                  className="secondary-button fit"
+                  disabled={filteredStudents.length === 0}
+                  key={option.value}
+                  onClick={() => markAllFiltered(option.value)}
+                  type="button"
+                >
+                  All {option.label}
+                </button>
+              ))}
+              <button
+                className="secondary-button fit"
+                disabled={filteredStudents.length === 0}
+                onClick={clearAllFiltered}
+                type="button"
+              >
+                Clear all
+              </button>
+            </div>
+          </div>
+
+          <div className="attendance-summary">
+            {attendanceItemOptions.map((option) => (
+              <article key={option.value}>
+                <span>{attendanceItemLabels[option.value]}</span>
+                <strong>{attendanceSummary[option.value]}</strong>
+              </article>
+            ))}
+            <article>
+              <span>Total Points</span>
+              <strong>{attendanceTotalPoints}</strong>
+            </article>
+          </div>
         </section>
 
         <section className="management-panel">
@@ -267,13 +379,13 @@ export default function AttendancePage() {
                         </span>
                       </div>
 
-                      <div className="status-options" aria-label={`${student.fullName} attendance`}>
-                        {statusOptions.map((option) => (
+                      <div className="status-options attendance-checks" aria-label={`${student.fullName} attendance`}>
+                        {attendanceItemOptions.map((option) => (
                           <button
-                            className={entry.status === option.value ? "active" : ""}
+                            className={entry.attendanceItems.includes(option.value) ? "active" : ""}
                             key={option.value}
                             onClick={() =>
-                              updateEntry(student.studentId, { status: option.value })
+                              toggleAttendanceItem(student.studentId, option.value)
                             }
                             type="button"
                           >
@@ -342,7 +454,8 @@ export default function AttendancePage() {
                   <tr>
                     <th>Date</th>
                     <th>Member</th>
-                    <th>Status</th>
+                    <th>Items</th>
+                    <th>Points</th>
                     <th>Group</th>
                     <th>Team</th>
                     <th>Note</th>
@@ -353,9 +466,8 @@ export default function AttendancePage() {
                     <tr key={record.attendanceId}>
                       <td>{record.date}</td>
                       <td>{record.studentName}</td>
-                      <td>
-                        <span className={`status-pill ${record.status}`}>{record.status}</span>
-                      </td>
+                      <td>{formatAttendanceItems(record.attendanceItems)}</td>
+                      <td>{getAttendancePoints(record)}</td>
                       <td>{record.group}</td>
                       <td>{record.team}</td>
                       <td>{record.note || "None"}</td>

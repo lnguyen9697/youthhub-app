@@ -9,7 +9,7 @@ import {
   where
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import type { AttendanceRecord, AttendanceStatus } from "@/types/attendance";
+import type { AttendanceItem, AttendanceRecord } from "@/types/attendance";
 import type { Student } from "@/types/student";
 
 type SaveAttendanceInput = {
@@ -17,7 +17,7 @@ type SaveAttendanceInput = {
   recordedBy: string;
   entries: Array<{
     student: Student;
-    status: AttendanceStatus;
+    attendanceItems: AttendanceItem[];
     note: string;
   }>;
 };
@@ -30,13 +30,28 @@ function requireDb() {
   return db;
 }
 
+function attendanceItemsFromData(data: Record<string, unknown>): AttendanceItem[] {
+  const savedItems = data.attendanceItems;
+
+  if (Array.isArray(savedItems)) {
+    return savedItems.map(String) as AttendanceItem[];
+  }
+
+  // Older attendance records used one status field. Keep those records readable.
+  return data.status === "present" ? ["present"] : [];
+}
+
 function attendanceFromDoc(id: string, data: Record<string, unknown>): AttendanceRecord {
+  const attendanceItems = attendanceItemsFromData(data);
+
   return {
     attendanceId: id,
     studentId: String(data.studentId ?? ""),
     studentName: String(data.studentName ?? ""),
     date: String(data.date ?? ""),
-    status: String(data.status ?? "present") as AttendanceStatus,
+    status: data.status ? String(data.status) as AttendanceRecord["status"] : undefined,
+    attendanceItems,
+    attendancePoints: Number(data.attendancePoints ?? attendanceItems.length),
     note: String(data.note ?? ""),
     recordedBy: String(data.recordedBy ?? ""),
     group: String(data.group ?? ""),
@@ -52,14 +67,15 @@ export async function saveAttendance(input: SaveAttendanceInput) {
   const firestore = requireDb();
 
   await Promise.all(
-    input.entries.map(({ student, status, note }) =>
+    input.entries.map(({ student, attendanceItems, note }) =>
       setDoc(
         doc(firestore, "attendance", attendanceIdFor(input.date, student.studentId)),
         {
           studentId: student.studentId,
           studentName: student.fullName,
           date: input.date,
-          status,
+          attendanceItems,
+          attendancePoints: attendanceItems.length,
           note,
           recordedBy: input.recordedBy,
           group: student.group,

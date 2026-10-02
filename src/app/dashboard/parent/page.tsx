@@ -8,17 +8,11 @@ import { TopNav } from "@/components/TopNav";
 import { useAuth } from "@/context/AuthContext";
 import { announcementMatchesGroupOrTeam, listAnnouncements } from "@/lib/announcements";
 import { listAttendanceForStudent } from "@/lib/attendance";
+import { formatAttendanceItems, getAttendancePoints } from "@/lib/attendanceScore";
 import { listCompetitionPointsForStudent } from "@/lib/points";
 import { listStudentsForParent } from "@/lib/students";
-import type { AttendanceRecord, AttendanceStatus } from "@/types/attendance";
+import type { AttendanceRecord } from "@/types/attendance";
 import type { Student } from "@/types/student";
-
-const attendancePointValues: Record<AttendanceStatus, number> = {
-  present: 3,
-  late: 2,
-  excused: 1,
-  absent: 0
-};
 
 type ParentDashboardSummary = {
   children: Student[];
@@ -57,7 +51,7 @@ export default function ParentDashboardPage() {
         ]);
         const allAttendance = childRecords.flatMap((record) => record.attendance);
         const attendanceTotal = allAttendance.reduce(
-          (total, record) => total + attendancePointValues[record.status],
+          (total, record) => total + getAttendancePoints(record),
           0
         );
         const manualTotal = childRecords
@@ -111,10 +105,16 @@ export default function ParentDashboardPage() {
         <div className="dashboard-grid">
           <DashboardCard
             title="Latest attendance"
-            value={summary?.latestAttendance?.status ?? "None yet"}
+            value={
+              summary?.latestAttendance
+                ? `${getAttendancePoints(summary.latestAttendance)} pts`
+                : "None yet"
+            }
           >
             {summary?.latestAttendance
-              ? `${summary.latestAttendance.studentName} on ${summary.latestAttendance.date}`
+              ? `${summary.latestAttendance.studentName}: ${formatAttendanceItems(
+                  summary.latestAttendance.attendanceItems
+                )} on ${summary.latestAttendance.date}`
               : "No attendance has been recorded yet."}
           </DashboardCard>
           <DashboardCard title="Total points" value={summary ? String(summary.totalPoints) : "Loading"}>

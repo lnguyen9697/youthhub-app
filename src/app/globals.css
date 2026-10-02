@@ -464,6 +464,22 @@ th {
   text-transform: uppercase;
 }
 
+.table-sort-button {
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 900;
+  padding: 0;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.table-sort-button:hover {
+  color: var(--primary);
+}
+
 td strong,
 td span {
   display: block;
@@ -502,7 +518,7 @@ td span {
 .score-rule-grid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   margin-top: 24px;
 }
 
@@ -750,6 +766,64 @@ td span {
   gap: 12px;
 }
 
+.attendance-tools {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-top: 18px;
+  padding-top: 18px;
+}
+
+.attendance-tools strong,
+.attendance-tools span {
+  display: block;
+}
+
+.attendance-tools span {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-top: 4px;
+}
+
+.attendance-tool-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.attendance-summary {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  margin-top: 18px;
+}
+
+.attendance-summary article {
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.attendance-summary span,
+.attendance-summary strong {
+  display: block;
+}
+
+.attendance-summary span {
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 800;
+}
+
+.attendance-summary strong {
+  font-size: 1.6rem;
+  margin-top: 4px;
+}
+
 .attendance-row {
   align-items: center;
   border: 1px solid var(--line);
@@ -775,7 +849,7 @@ td span {
   border-radius: 8px;
   display: grid;
   gap: 4px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   padding: 4px;
 }
 
@@ -794,6 +868,10 @@ td span {
   background: var(--panel);
   color: var(--primary);
   box-shadow: 0 4px 12px rgba(23, 32, 51, 0.08);
+}
+
+.attendance-checks button {
+  min-height: 44px;
 }
 
 .attendance-note {
@@ -840,8 +918,22 @@ td span {
   .quick-actions,
   .filter-grid,
   .score-rule-grid,
-  .parent-summary {
+  .parent-summary,
+  .attendance-summary {
     grid-template-columns: 1fr;
+  }
+
+  .attendance-tools {
+    align-items: stretch;
+    display: grid;
+  }
+
+  .attendance-tool-actions {
+    justify-content: stretch;
+  }
+
+  .attendance-tool-actions .secondary-button {
+    flex: 1 1 140px;
   }
 
   .span-dashboard-2 {
